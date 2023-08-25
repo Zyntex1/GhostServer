@@ -1,10 +1,15 @@
 #include "networkmanager.h"
 #include <signal.h>
-#include <poll.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <string>
+
+#ifdef _WIN32
+    #include <iostream>
+#else
+    #include <poll.h>
+    #include <unistd.h>
+#endif
 
 static volatile int g_should_stop = 0;
 
@@ -16,7 +21,7 @@ static enum {
     CMD_BAN,
     CMD_BAN_ID,
     CMD_SERVER_MSG,
-} g_current_cmd = CMD_NONE;
+} g_current_cmd;
 
 static char *g_entered_pre;
 static char *g_entered_post;
@@ -258,7 +263,7 @@ static void handle_cmd(char *line) {
     }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
     signal(SIGINT, +[](int s) {
         g_should_stop = 1;
     });
@@ -288,6 +293,11 @@ int main(int argc, char **argv) {
     puts("Server starting up");
     network.StartServer(port);
     while (!g_should_stop) {
+#ifdef _WIN32
+        char line[50];
+        if (std::cin.getline(line, 50))
+            handle_cmd(line);
+#else
         struct pollfd fds[] = {
             (struct pollfd){
                 .fd = STDIN_FILENO,
@@ -298,12 +308,15 @@ int main(int argc, char **argv) {
 
         if (poll(fds, sizeof fds / sizeof fds[0], 50) == 1) {
             if (fds[0].revents & POLLIN) {
-                char *line = NULL;
+                char* line = NULL;
                 size_t len = 0;
-                if (getline(&line, &len, stdin) != -1) handle_cmd(line);
-                if (line) free(line);
+                if (getline(&line, &len, stdin) != -1)
+                    handle_cmd(line);
+                if (line)
+                    free(line);
             }
         }
+#endif
     }
     puts("Server shutting down");
     network.StopServer();
